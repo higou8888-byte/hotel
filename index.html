@@ -1,4 +1,4 @@
-
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
@@ -32,35 +32,35 @@
       font-weight: 600; color: #999; cursor: pointer;
       transition: 0.2s;
     }
-    .标签.激活 { 颜色: #007AFF; 下边框: 2px 实线 #007AFF; }
-    .页面 { 显示: 无; 填充: 16像素; }
-    .页面.激活 { 显示: 块; }
-    .月-条形图 {
-      显示：弹性布局；对齐项目：居中；对齐内容：空间均匀分布;
-      下边距：16像素;
+    .tab.active { color: #007AFF; border-bottom: 2px solid #007AFF; }
+    .page { display: none; padding: 16px; }
+    .page.active { display: block; }
+    .month-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 16px;
     }
-    .月-条形 按钮 {
-      背景：无；边框：无；字体大小：20px；内边距：12px;
-      光标：指针；颜色：#007AFF;
+    .month-bar button {
+      background: none; border: none; font-size: 20px; padding: 12px;
+      cursor: pointer; color: #007AFF;
     }
-    .月标题 {
-      字体大小：18像素；字体粗细：粗体；
+    .month-title {
+      font-size: 18px; font-weight: bold;
     }
-    .概要卡片 {
-      显示：弹性布局；间隔：12像素；下边距：20像素;
+    .summary-cards {
+      display: flex; gap: 12px; margin-bottom: 20px;
     }
-    .卡片 {
-      弹性：1；内边距：12px；边框半径：12px;
-      文本对齐：居中；颜色：#fff;
+    .card {
+      flex: 1; padding: 12px; border-radius: 12px;
+      text-align: center; color: #fff;
     }
-    .卡片.收入 { 背景: #34C759; }
-    .卡片.支出 { 背景: #FF3B30; }
-    .卡.余额 { 背景: #007AFF; }
-    .卡片 .标签 { 字体大小: 12像素; 不透明度: 0.9; }
-    .卡片 .值 { 字体大小: 18px; 字体粗细: 粗体; 上边距: 4px; }
-    .同步状态 {
-      文本对齐：居中；字体大小：12像素；颜色：#999;
-px 0; margin-bottom: 8px;
+    .card.income { background: #34C759; }
+    .card.expense { background: #FF3B30; }
+    .card.balance { background: #007AFF; }
+    .card .label { font-size: 12px; opacity: 0.9; }
+    .card .value { font-size: 18px; font-weight: bold; margin-top: 4px; }
+    .sync-status {
+      text-align: center; font-size: 12px; color: #999;
+      padding: 4px 0; margin-bottom: 8px;
     }
     .sync-status.synced { color: #34C759; }
     .sync-status.syncing { color: #FF9500; }
@@ -94,7 +94,7 @@ px 0; margin-bottom: 8px;
     .filter-btn.active { background: #007AFF; color: #fff; border-color: #007AFF; }
     .form-group { margin-bottom: 16px; }
     .form-group label { display: block; font-weight: 500; margin-bottom: 6px; }
-}form-group input, .form-group select, .form-group textarea {
+    .form-group input, .form-group select, .form-group textarea {
       width: 100%; padding: 10px; border: 1px solid #ddd;
       border-radius: 10px; font-size: 16px;
     }
@@ -199,7 +199,7 @@ px 0; margin-bottom: 8px;
 
 <script>
   // ============ 配置（只改这一行！）============
-  var GITHUB_TOKEN = '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';
+  var GITHUB_TOKEN = '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';
   var GITHUB_REPO = 'higou8888-byte/hotel';
   var GITHUB_FILE = 'ledger_data.json';
   // ============ 配置结束 ============
