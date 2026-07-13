@@ -8,7 +8,7 @@
   <meta name="theme-color" content="#f5f5f5">
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <title>旅店流水账
+  <title>旅店流水账</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -133,14 +133,13 @@
     <div class="tab" data-page="summary">汇总</div>
   </div>
 
-  <!-- 流水列表页 -->
   <div class="page active" id="list">
     <div class="month-bar">
       <button id="prevMonthBtn">◀</button>
       <span class="month-title" id="currentMonth"></span>
       <button id="nextMonthBtn">▶</button>
     </div>
-    <div class="sync-status" id="syncStatus">准备同步...</div>
+    <div class="sync-status" id="syncStatus"></div>
     <div class="summary-cards" id="listCards"></div>
     <div class="filter-bar">
       <button class="filter-btn active" data-filter="all">全部</button>
@@ -149,13 +148,12 @@
     </div>
     <ul class="tx-list" id="txList"></ul>
     <div class="action-buttons">
-      <button class="btn-secondary btn-export" onclick="exportData()">📤 导出备份</button>
-      <button class="btn-secondary btn-import" onclick="importData()">📥 导入恢复</button>
-      <button class="btn-secondary" style="background:#FF9500;" onclick="forceSync()">🔄 手动同步</button>
+      <button class="btn-secondary btn-export" id="exportBtn">📤 导出</button>
+      <button class="btn-secondary btn-import" id="importBtn">📥 导入</button>
+      <button class="btn-secondary" style="background:#FF9500;" id="forceSyncBtn">🔄 同步</button>
     </div>
   </div>
 
-  <!-- 记账页 -->
   <div class="page" id="add">
     <h3 style="margin-bottom:16px;">记一笔</h3>
     <div class="form-group">
@@ -185,7 +183,6 @@
     <button class="btn-primary" id="saveBtn">保存</button>
   </div>
 
-  <!-- 月度汇总页 -->
   <div class="page" id="summary">
     <div class="month-bar">
       <button id="summaryPrevBtn">◀</button>
@@ -201,27 +198,27 @@
 </div>
 
 <script>
-  // ============ 配置（需要修改这里）============
-  const GITHUB_TOKEN = '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';
-  const GITHUB_REPO = 'higou8888-byte/hotel';
-  const GITHUB_FILE = 'ledger_data.json';
+  // ============ 配置（只改这一行！）============
+  var GITHUB_TOKEN = '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';
+  var GITHUB_REPO = 'higou8888-byte/hotel';
+  var GITHUB_FILE = 'ledger_data.json';
   // ============ 配置结束 ============
 
-  const STORAGE_KEY = 'hotel_ledger_transactions';
-  const RECENT_INCOME_KEY = 'recent_income';
-  const RECENT_EXPENSE_KEY = 'recent_expense';
-  const SYNC_TIME_KEY = 'hotel_ledger_last_sync';
+  var STORAGE_KEY = 'hotel_ledger_transactions';
+  var RECENT_INCOME_KEY = 'recent_income';
+  var RECENT_EXPENSE_KEY = 'recent_expense';
+  var SYNC_TIME_KEY = 'hotel_ledger_last_sync';
 
-  let transactions = [];
-  let currentListMonth = new Date().toISOString().slice(0,7);
-  let currentSummaryMonth = new Date().toISOString().slice(0,7);
-  let filterType = 'all';
-  let pieChartInstance = null;
-  let isSyncing = false;
+  var transactions = [];
+  var currentListMonth = new Date().toISOString().slice(0,7);
+  var currentSummaryMonth = new Date().toISOString().slice(0,7);
+  var filterType = 'all';
+  var pieChartInstance = null;
+  var isSyncing = false;
 
-  // ============ 本地数据操作 ============
+  // ============ 本地数据 ============
   function loadLocalData() {
-    const data = localStorage.getItem(STORAGE_KEY);
+    var data = localStorage.getItem(STORAGE_KEY);
     transactions = data ? JSON.parse(data) : [];
   }
 
@@ -229,206 +226,262 @@
     localStorage.setItem(STORAGE_KEY, JSON.stringify(transactions));
   }
 
-  // ============ GitHub 同步 ============
+  // ============ 同步状态显示 ============
   function setSyncStatus(status, text) {
-    const el = document.getElementById('syncStatus');
-    el.textContent = text;
-    el.className = 'sync-status ' + status;
+    var el = document.getElementById('syncStatus');
+    if (el) {
+      el.textContent = text;
+      el.className = 'sync-status ' + status;
+    }
   }
 
-  // 上传数据到 GitHub
-  async function uploadToGitHub() {
-    if (isSyncing) return;
+  // ============ GitHub 上传 ============
+  function uploadToGitHub(callback) {
+    if (isSyncing) { if (callback) callback(false); return; }
     isSyncing = true;
-    setSyncStatus('syncing', '⏳ 正在上传...');
-    try {
-      const content = btoa(unescape(encodeURIComponent(JSON.stringify(transactions, null, 2))));
-      
-      // 先获取现有文件的 sha
-      let sha = '';
-      try {
-        const getRes = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${GITHUB_FILE}`, {
-          headers: { 
-            'Authorization': `token ${GITHUB_TOKEN}`,
-            'Accept': 'application/vnd.github.v3+json'
-          }
-        });
-        if (getRes.ok) {
-          const getData = await getRes.json();
-          sha = getData.sha || '';
-        }
-      } catch(e) {
-        // 文件不存在，sha 为空，会创建新文件
+    setSyncStatus('syncing', '同步中...');
+    
+    var content = btoa(unescape(encodeURIComponent(JSON.stringify(transactions, null, 2))));
+    
+    // 先获取文件 sha
+    var xhr1 = new XMLHttpRequest();
+    xhr1.open('GET', 'https://api.github.com/repos/' + GITHUB_REPO + '/contents/' + GITHUB_FILE);
+    xhr1.setRequestHeader('Authorization', 'token ' + GITHUB_TOKEN);
+    xhr1.setRequestHeader('Accept', 'application/vnd.github.v3+json');
+    
+    xhr1.onload = function() {
+      var sha = '';
+      if (xhr1.status === 200) {
+        try {
+          var data = JSON.parse(xhr1.responseText);
+          sha = data.sha || '';
+        } catch(e) {}
       }
       
-      const body = {
+      // 上传文件
+      var body = JSON.stringify({
+        message: '自动同步流水数据',
+        content: content,
+        sha: sha || undefined
+      });
+      
+      var xhr2 = new XMLHttpRequest();
+      xhr2.open('PUT', 'https://api.github.com/repos/' + GITHUB_REPO + '/contents/' + GITHUB_FILE);
+      xhr2.setRequestHeader('Authorization', 'token ' + GITHUB_TOKEN);
+      xhr2.setRequestHeader('Content-Type', 'application/json');
+      xhr2.setRequestHeader('Accept', 'application/vnd.github.v3+json');
+      
+      xhr2.onload = function() {
+        isSyncing = false;
+        if (xhr2.status === 200 || xhr2.status === 201) {
+          localStorage.setItem(SYNC_TIME_KEY, Date.now().toString());
+          setSyncStatus('synced', '已同步 ' + new Date().toLocaleTimeString());
+          if (callback) callback(true);
+        } else {
+          console.error('上传失败:', xhr2.status, xhr2.responseText);
+          setSyncStatus('error', '同步失败(' + xhr2.status + ')');
+          if (callback) callback(false);
+        }
+      };
+      
+      xhr2.onerror = function() {
+        isSyncing = false;
+        setSyncStatus('error', '网络错误');
+        if (callback) callback(false);
+      };
+      
+      xhr2.send(body);
+    };
+    
+    xhr1.onerror = function() {
+      // 获取 sha 失败，尝试直接上传（文件可能不存在）
+      var body = JSON.stringify({
         message: '自动同步流水数据',
         content: content
-      };
-      if (sha) body.sha = sha;
-
-      const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${GITHUB_FILE}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `token ${GITHUB_TOKEN}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/vnd.github.v3+json'
-        },
-        body: JSON.stringify(body)
-      });
-
-      if (res.ok) {
-        localStorage.setItem(SYNC_TIME_KEY, Date.now().toString());
-        setSyncStatus('synced', '✅ 已同步 ' + new Date().toLocaleTimeString());
-      } else {
-        const errData = await res.json();
-        console.error('上传失败:', errData);
-        setSyncStatus('error', '❌ 上传失败，点击手动同步重试');
-      }
-    } catch(e) {
-      console.error('同步错误:', e);
-      setSyncStatus('error', '❌ 网络错误，稍后重试');
-    }
-    isSyncing = false;
-  }
-
-  // 从 GitHub 下载数据
-  async function downloadFromGitHub() {
-    if (isSyncing) return;
-    isSyncing = true;
-    setSyncStatus('syncing', '⏳ 正在下载最新数据...');
-    try {
-      const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${GITHUB_FILE}`, {
-        headers: { 
-          'Authorization': `token ${GITHUB_TOKEN}`,
-          'Accept': 'application/vnd.github.v3+json'
-        },
-        cache: 'no-cache'
       });
       
-      if (!res.ok) {
-        // 文件可能不存在（首次使用），直接用本地数据上传
-        if (transactions.length > 0) {
-          await uploadToGitHub();
-        } else {
-          setSyncStatus('synced', '✅ 等待首次记账');
-        }
+      var xhr2 = new XMLHttpRequest();
+      xhr2.open('PUT', 'https://api.github.com/repos/' + GITHUB_REPO + '/contents/' + GITHUB_FILE);
+      xhr2.setRequestHeader('Authorization', 'token ' + GITHUB_TOKEN);
+      xhr2.setRequestHeader('Content-Type', 'application/json');
+      xhr2.setRequestHeader('Accept', 'application/vnd.github.v3+json');
+      
+      xhr2.onload = function() {
         isSyncing = false;
-        return;
-      }
-
-      const data = await res.json();
-      const remoteContent = JSON.parse(decodeURIComponent(escape(atob(data.content))));
-      
-      if (Array.isArray(remoteContent)) {
-        const lastSync = localStorage.getItem(SYNC_TIME_KEY);
-        // 合并策略：如果本地有更新的数据，以本地为准
-        if (lastSync && transactions.length > 0 && remoteContent.length > 0) {
-          // 简单合并：用 ID 去重，保留两边的数据
-          const merged = [...remoteContent];
-          const remoteIds = new Set(merged.map(t => t.id));
-          transactions.forEach(t => {
-            if (!remoteIds.has(t.id)) {
-              merged.push(t);
-            }
-          });
-          merged.sort((a, b) => new Date(b.date) - new Date(a.date));
-          transactions = merged;
-        } else if (remoteContent.length >= transactions.length) {
-          // 远程数据更多或相等，用远程的
-          transactions = remoteContent;
+        if (xhr2.status === 200 || xhr2.status === 201) {
+          localStorage.setItem(SYNC_TIME_KEY, Date.now().toString());
+          setSyncStatus('synced', '已同步 ' + new Date().toLocaleTimeString());
+          if (callback) callback(true);
+        } else {
+          console.error('上传失败:', xhr2.status, xhr2.responseText);
+          setSyncStatus('error', '同步失败(' + xhr2.status + ')');
+          if (callback) callback(false);
         }
-        // 否则保持本地数据不变（本地更多）
-        
-        saveLocalData();
-        localStorage.setItem(SYNC_TIME_KEY, Date.now().toString());
-        setSyncStatus('synced', '✅ 已同步 ' + new Date().toLocaleTimeString());
-        console.log('云端数据加载成功，共', transactions.length, '条');
-      }
-    } catch(e) {
-      console.error('下载错误:', e);
-      setSyncStatus('error', '❌ 网络错误，使用本地数据');
-    }
-    isSyncing = false;
+      };
+      
+      xhr2.onerror = function() {
+        isSyncing = false;
+        setSyncStatus('error', '网络错误');
+        if (callback) callback(false);
+      };
+      
+      xhr2.send(body);
+    };
+    
+    xhr1.send();
   }
 
-  // 手动强制同步
-  async function forceSync() {
-    await downloadFromGitHub();
-    await uploadToGitHub();
-    renderList();
-    if (document.getElementById('summary').classList.contains('active')) {
-      renderSummary();
-    }
+  // ============ GitHub 下载 ============
+  function downloadFromGitHub(callback) {
+    if (isSyncing) { if (callback) callback(false); return; }
+    isSyncing = true;
+    setSyncStatus('syncing', '同步中...');
+    
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', 'https://api.github.com/repos/' + GITHUB_REPO + '/contents/' + GITHUB_FILE);
+    xhr.setRequestHeader('Authorization', 'token ' + GITHUB_TOKEN);
+    xhr.setRequestHeader('Accept', 'application/vnd.github.v3+json');
+    xhr.setRequestHeader('Cache-Control', 'no-cache');
+    
+    xhr.onload = function() {
+      isSyncing = false;
+      if (xhr.status === 200) {
+        try {
+          var data = JSON.parse(xhr.responseText);
+          var remoteContent = JSON.parse(decodeURIComponent(escape(atob(data.content))));
+          if (Array.isArray(remoteContent)) {
+            var merged = remoteContent.slice();
+            var remoteIds = {};
+            merged.forEach(function(t) { remoteIds[t.id] = true; });
+            transactions.forEach(function(t) {
+              if (!remoteIds[t.id]) merged.push(t);
+            });
+            merged.sort(function(a, b) { return new Date(b.date) - new Date(a.date); });
+            transactions = merged;
+            saveLocalData();
+            localStorage.setItem(SYNC_TIME_KEY, Date.now().toString());
+            setSyncStatus('synced', '已同步 ' + new Date().toLocaleTimeString());
+            if (callback) callback(true);
+            return;
+          }
+        } catch(e) {
+          console.error('解析数据失败:', e);
+        }
+      } else if (xhr.status === 404) {
+        // 文件不存在，首次使用
+        if (transactions.length > 0) {
+          uploadToGitHub(function(ok) {
+            if (ok) {
+              setSyncStatus('synced', '已同步 ' + new Date().toLocaleTimeString());
+            }
+            if (callback) callback(ok);
+          });
+          return;
+        } else {
+          setSyncStatus('synced', '等待首次记账');
+        }
+      } else {
+        console.error('下载失败:', xhr.status, xhr.responseText);
+        setSyncStatus('error', '同步失败(' + xhr.status + ')');
+      }
+      if (callback) callback(false);
+    };
+    
+    xhr.onerror = function() {
+      isSyncing = false;
+      setSyncStatus('error', '网络错误');
+      if (callback) callback(false);
+    };
+    
+    xhr.send();
+  }
+
+  // ============ 手动同步 ============
+  function forceSync() {
+    downloadFromGitHub(function() {
+      renderList();
+      uploadToGitHub();
+    });
   }
 
   // ============ 常用项目 ============
   function getRecent(type) {
-    const key = type === 'income' ? RECENT_INCOME_KEY : RECENT_EXPENSE_KEY;
+    var key = type === 'income' ? RECENT_INCOME_KEY : RECENT_EXPENSE_KEY;
     return JSON.parse(localStorage.getItem(key) || '[]');
   }
 
   function addRecent(type, category) {
-    const key = type === 'income' ? RECENT_INCOME_KEY : RECENT_EXPENSE_KEY;
-    let items = JSON.parse(localStorage.getItem(key) || '[]');
-    items = items.filter(i => i !== category);
+    var key = type === 'income' ? RECENT_INCOME_KEY : RECENT_EXPENSE_KEY;
+    var items = JSON.parse(localStorage.getItem(key) || '[]');
+    items = items.filter(function(i) { return i !== category; });
     items.unshift(category);
     if (items.length > 10) items.pop();
     localStorage.setItem(key, JSON.stringify(items));
   }
 
   function renderQuickTags() {
-    const type = document.getElementById('typeSelect').value;
-    const items = getRecent(type);
-    const container = document.getElementById('quickTags');
-    container.innerHTML = items.map(item => 
-      `<span class="tag" onclick="document.getElementById('categoryInput').value='${item.replace(/'/g, "\\'")}'">${item}</span>`
-    ).join('');
+    var typeSelect = document.getElementById('typeSelect');
+    var container = document.getElementById('quickTags');
+    if (!typeSelect || !container) return;
+    var type = typeSelect.value;
+    var items = getRecent(type);
+    container.innerHTML = items.map(function(item) {
+      return '<span class="tag" data-category="' + item.replace(/"/g, '&quot;').replace(/'/g, '&#39;') + '">' + item + '</span>';
+    }).join('');
+    
+    container.querySelectorAll('.tag').forEach(function(tag) {
+      tag.addEventListener('click', function() {
+        var catInput = document.getElementById('categoryInput');
+        if (catInput) catInput.value = this.dataset.category;
+      });
+    });
   }
 
   // ============ 导出导入 ============
   function exportData() {
-    const dataStr = JSON.stringify(transactions, null, 2);
-    const blob = new Blob([dataStr], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    if (transactions.length === 0) { alert('没有数据可导出'); return; }
+    var dataStr = JSON.stringify(transactions, null, 2);
+    var blob = new Blob([dataStr], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
     a.href = url;
     a.download = '旅店流水账备份_' + new Date().toISOString().slice(0,10) + '.json';
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    alert('导出成功！文件已下载。');
   }
 
   function importData() {
-    const input = document.createElement('input');
+    var input = document.createElement('input');
     input.type = 'file';
     input.accept = '.json';
     input.onchange = function(e) {
-      const file = e.target.files[0];
+      var file = e.target.files[0];
       if (!file) return;
-      const reader = new FileReader();
+      var reader = new FileReader();
       reader.onload = function(ev) {
         try {
-          const data = JSON.parse(ev.target.result);
+          var data = JSON.parse(ev.target.result);
           if (!Array.isArray(data)) throw new Error('格式错误');
-          if (confirm('导入将合并数据（共' + data.length + '条记录），确定继续？')) {
-            // 合并导入的数据
-            const existingIds = new Set(transactions.map(t => t.id));
-            let newCount = 0;
-            data.forEach(item => {
-              if (!existingIds.has(item.id)) {
+          if (confirm('导入将合并数据（共' + data.length + '条），确定？')) {
+            var existingIds = {};
+            transactions.forEach(function(t) { existingIds[t.id] = true; });
+            var newCount = 0;
+            data.forEach(function(item) {
+              if (!existingIds[item.id]) {
                 transactions.push(item);
                 newCount++;
               }
             });
-            transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+            transactions.sort(function(a, b) { return new Date(b.date) - new Date(a.date); });
             saveLocalData();
             uploadToGitHub();
             renderList();
-            alert('导入成功！新增 ' + newCount + ' 条记录');
+            alert('导入成功！新增 ' + newCount + ' 条');
           }
         } catch (err) {
-          alert('文件格式不正确，请选择之前导出的备份文件。');
+          alert('文件格式不正确');
         }
       };
       reader.readAsText(file);
@@ -436,78 +489,104 @@
     input.click();
   }
 
+  // ============ 月份切换 ============
+  function changeMonth(monthStr, delta) {
+    var parts = monthStr.split('-');
+    var year = parseInt(parts[0]);
+    var month = parseInt(parts[1]);
+    month = month + delta;
+    if (month > 12) { year++; month = 1; }
+    else if (month < 1) { year--; month = 12; }
+    return year + '-' + (month < 10 ? '0' : '') + month;
+  }
+
+  function changeListMonth(delta) {
+    currentListMonth = changeMonth(currentListMonth, delta);
+    renderList();
+  }
+
+  function changeSummaryMonth(delta) {
+    currentSummaryMonth = changeMonth(currentSummaryMonth, delta);
+    renderSummary();
+  }
+
   // ============ 日期工具 ============
   function getMonthRange(monthStr) {
-    const [year, month] = monthStr.split('-').map(Number);
-    const start = new Date(year, month-1, 1);
-    const end = new Date(year, month, 0);
-    return { start: start.toISOString().slice(0,10), end: end.toISOString().slice(0,10) };
+    var parts = monthStr.split('-');
+    var year = parseInt(parts[0]);
+    var month = parseInt(parts[1]);
+    var start = new Date(year, month - 1, 1);
+    var end = new Date(year, month, 0);
+    function pad(n) { return n < 10 ? '0' + n : '' + n; }
+    return { 
+      start: start.getFullYear() + '-' + pad(start.getMonth() + 1) + '-' + pad(start.getDate()),
+      end: end.getFullYear() + '-' + pad(end.getMonth() + 1) + '-' + pad(end.getDate())
+    };
   }
 
   function filterByMonth(txs, monthStr) {
-    const range = getMonthRange(monthStr);
-    return txs.filter(t => t.date >= range.start && t.date <= range.end);
+    var range = getMonthRange(monthStr);
+    return txs.filter(function(t) {
+      return t.date >= range.start && t.date <= range.end;
+    });
   }
 
   // ============ 页面切换 ============
-  document.querySelectorAll('.tab').forEach(tab => {
-    tab.addEventListener('click', function() {
-      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-      this.classList.add('active');
-      document.getElementById(this.dataset.page).classList.add('active');
-      if (this.dataset.page === 'summary') renderSummary();
-    });
-  });
-
-  // ============ 事件绑定 ============
-  document.getElementById('prevMonthBtn').addEventListener('click', function() { changeListMonth(-1); });
-  document.getElementById('nextMonthBtn').addEventListener('click', function() { changeListMonth(1); });
-  document.getElementById('summaryPrevBtn').addEventListener('click', function() { changeSummaryMonth(-1); });
-  document.getElementById('summaryNextBtn').addEventListener('click', function() { changeSummaryMonth(1); });
-  document.getElementById('saveBtn').addEventListener('click', saveTx);
-  document.getElementById('typeSelect').addEventListener('change', renderQuickTags);
-
-  document.querySelectorAll('.filter-btn').forEach(btn => {
-    btn.addEventListener('click', function() { setFilter(this.dataset.filter); });
-  });
+  function switchTab(pageId) {
+    document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+    document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
+    var targetTab = document.querySelector('.tab[data-page="' + pageId + '"]');
+    var targetPage = document.getElementById(pageId);
+    if (targetTab) targetTab.classList.add('active');
+    if (targetPage) targetPage.classList.add('active');
+    if (pageId === 'summary') renderSummary();
+  }
 
   // ============ 流水列表 ============
   function renderList() {
-    document.getElementById('currentMonth').textContent = currentListMonth.replace('-','年')+'月';
-    const monthTxs = filterByMonth(transactions, currentListMonth);
-    let filtered = monthTxs;
-    if (filterType === 'income') filtered = monthTxs.filter(t => t.type==='income');
-    else if (filterType === 'expense') filtered = monthTxs.filter(t => t.type==='expense');
+    var monthEl = document.getElementById('currentMonth');
+    if (monthEl) monthEl.textContent = currentListMonth.replace('-','年') + '月';
+    
+    var monthTxs = filterByMonth(transactions, currentListMonth);
+    var filtered = monthTxs;
+    if (filterType === 'income') filtered = monthTxs.filter(function(t) { return t.type === 'income'; });
+    else if (filterType === 'expense') filtered = monthTxs.filter(function(t) { return t.type === 'expense'; });
 
-    const totalIncome = monthTxs.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
-    const totalExpense = monthTxs.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
-    document.getElementById('listCards').innerHTML = `
-      <div class="card income"><div class="label">收入</div><div class="value">${totalIncome.toFixed(2)}</div></div>
-      <div class="card expense"><div class="label">支出</div><div class="value">${totalExpense.toFixed(2)}</div></div>
-      <div class="card balance"><div class="label">结余</div><div class="value">${(totalIncome-totalExpense).toFixed(2)}</div></div>
-    `;
+    var totalIncome = monthTxs.filter(function(t) { return t.type === 'income'; }).reduce(function(s,t) { return s + t.amount; }, 0);
+    var totalExpense = monthTxs.filter(function(t) { return t.type === 'expense'; }).reduce(function(s,t) { return s + t.amount; }, 0);
+    
+    var listCards = document.getElementById('listCards');
+    if (listCards) {
+      listCards.innerHTML = 
+        '<div class="card income"><div class="label">收入</div><div class="value">' + totalIncome.toFixed(2) + '</div></div>' +
+        '<div class="card expense"><div class="label">支出</div><div class="value">' + totalExpense.toFixed(2) + '</div></div>' +
+        '<div class="card balance"><div class="label">结余</div><div class="value">' + (totalIncome - totalExpense).toFixed(2) + '</div></div>';
+    }
 
-    const listEl = document.getElementById('txList');
+    var listEl = document.getElementById('txList');
+    if (!listEl) return;
+    
     if (filtered.length === 0) {
       listEl.innerHTML = '<li style="text-align:center;padding:40px;color:#999;">暂无记录</li>';
     } else {
-      listEl.innerHTML = filtered.map(tx => `
-        <li class="tx-item">
-          <div class="tx-icon ${tx.type}">${tx.type==='income'?'+':'−'}</div>
-          <div class="tx-info">
-            <div class="tx-category">${tx.category}</div>
-            <div class="tx-date">${tx.date}${tx.note ? ' · '+tx.note : ''}</div>
-          </div>
-          <div class="tx-amount ${tx.type}">${tx.type==='income'?'+':'-'}${tx.amount.toFixed(2)}</div>
-          <button class="delete-btn" data-id="${tx.id}">🗑</button>
-        </li>
-      `).join('');
+      var html = '';
+      filtered.forEach(function(tx) {
+        html += '<li class="tx-item">' +
+          '<div class="tx-icon ' + tx.type + '">' + (tx.type === 'income' ? '+' : '-') + '</div>' +
+          '<div class="tx-info">' +
+            '<div class="tx-category">' + tx.category + '</div>' +
+            '<div class="tx-date">' + tx.date + (tx.note ? ' · ' + tx.note : '') + '</div>' +
+          '</div>' +
+          '<div class="tx-amount ' + tx.type + '">' + (tx.type === 'income' ? '+' : '-') + tx.amount.toFixed(2) + '</div>' +
+          '<button class="delete-btn" data-id="' + tx.id + '">🗑</button>' +
+        '</li>';
+      });
+      listEl.innerHTML = html;
       
-      // 给删除按钮绑定事件
-      document.querySelectorAll('.delete-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-          deleteTx(this.dataset.id);
+      listEl.querySelectorAll('.delete-btn').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          deleteTx(this.getAttribute('data-id'));
         });
       });
     }
@@ -515,142 +594,178 @@
 
   function setFilter(type) {
     filterType = type;
-    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-    document.querySelector(`.filter-btn[data-filter="${type}"]`).classList.add('active');
-    renderList();
-  }
-
-  function changeListMonth(delta) {
-    const [year, month] = currentListMonth.split('-').map(Number);
-    const d = new Date(year, month-1+delta, 1);
-    currentListMonth = d.toISOString().slice(0,7);
+    document.querySelectorAll('.filter-btn').forEach(function(b) { b.classList.remove('active'); });
+    var activeBtn = document.querySelector('.filter-btn[data-filter="' + type + '"]');
+    if (activeBtn) activeBtn.classList.add('active');
     renderList();
   }
 
   function deleteTx(id) {
-    if (!confirm('确定删除这条记录吗？')) return;
-    transactions = transactions.filter(t => t.id !== id);
+    if (!confirm('确定删除？')) return;
+    transactions = transactions.filter(function(t) { return t.id !== id; });
     saveLocalData();
     uploadToGitHub();
     renderList();
   }
 
   // ============ 记账 ============
-  document.getElementById('dateInput').value = new Date().toISOString().slice(0,10);
-
   function saveTx() {
-    const type = document.getElementById('typeSelect').value;
-    const amount = parseFloat(document.getElementById('amountInput').value);
-    const category = document.getElementById('categoryInput').value.trim();
-    const date = document.getElementById('dateInput').value;
-    const note = document.getElementById('noteInput').value.trim();
+    var typeSelect = document.getElementById('typeSelect');
+    var amountInput = document.getElementById('amountInput');
+    var categoryInput = document.getElementById('categoryInput');
+    var dateInput = document.getElementById('dateInput');
+    var noteInput = document.getElementById('noteInput');
+
+    var type = typeSelect ? typeSelect.value : 'expense';
+    var amount = amountInput ? parseFloat(amountInput.value) : 0;
+    var category = categoryInput ? categoryInput.value.trim() : '';
+    var date = dateInput ? dateInput.value : new Date().toISOString().slice(0,10);
+    var note = noteInput ? noteInput.value.trim() : '';
 
     if (!amount || amount <= 0) { alert('请输入有效金额'); return; }
     if (!category) { alert('请输入项目名称'); return; }
 
     transactions.unshift({
       id: Date.now().toString() + '_' + Math.random().toString(36).substr(2, 5),
-      type, amount, category, date, note
+      type: type,
+      amount: amount,
+      category: category,
+      date: date,
+      note: note
     });
 
     saveLocalData();
     addRecent(type, category);
-    uploadToGitHub();
+    uploadToGitHub(function(ok) {
+      if (ok) {
+        console.log('自动同步成功');
+      }
+    });
 
-    // 清空表单
-    document.getElementById('amountInput').value = '';
-    document.getElementById('categoryInput').value = '';
-    document.getElementById('noteInput').value = '';
-    document.getElementById('dateInput').value = new Date().toISOString().slice(0,10);
+    if (amountInput) amountInput.value = '';
+    if (categoryInput) categoryInput.value = '';
+    if (noteInput) noteInput.value = '';
+    if (dateInput) dateInput.value = new Date().toISOString().slice(0,10);
     renderQuickTags();
-    alert('保存成功！数据已自动同步到云端。');
+    alert('保存成功！');
   }
 
   // ============ 月度汇总 ============
   function renderSummary() {
-    document.getElementById('summaryMonth').textContent = currentSummaryMonth.replace('-','年')+'月';
-    const monthTxs = filterByMonth(transactions, currentSummaryMonth);
-    const totalIncome = monthTxs.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
-    const totalExpense = monthTxs.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
-
-    document.getElementById('summaryCards').innerHTML = `
-      <div class="card income"><div class="label">总收入</div><div class="value">${totalIncome.toFixed(2)}</div></div>
-      <div class="card expense"><div class="label">总支出</div><div class="value">${totalExpense.toFixed(2)}</div></div>
-      <div class="card balance"><div class="label">结余</div><div class="value">${(totalIncome-totalExpense).toFixed(2)}</div></div>
-    `;
-
-    const expenseMap = {};
-    monthTxs.filter(t=>t.type==='expense').forEach(t => {
-      expenseMap[t.category] = (expenseMap[t.category]||0) + t.amount;
-    });
-    const expenseEntries = Object.entries(expenseMap).sort((a,b)=>b[1]-a[1]);
-    const incomeMap = {};
-    monthTxs.filter(t=>t.type==='income').forEach(t => {
-      incomeMap[t.category] = (incomeMap[t.category]||0) + t.amount;
-    });
-    const incomeEntries = Object.entries(incomeMap).sort((a,b)=>b[1]-a[1]);
-
-    if (pieChartInstance) pieChartInstance.destroy();
-    const ctx = document.getElementById('pieChart');
-    if (!ctx) return;
-    const ctx2d = ctx.getContext('2d');
-    const allLabels = [...expenseEntries.map(e=>e[0]+'(支出)'), ...incomeEntries.map(e=>e[0]+'(收入)')];
-    const allData = [...expenseEntries.map(e=>e[1]), ...incomeEntries.map(e=>e[1])];
+    var summaryMonthEl = document.getElementById('summaryMonth');
+    if (summaryMonthEl) summaryMonthEl.textContent = currentSummaryMonth.replace('-','年') + '月';
     
-    if (allLabels.length > 0) {
-      pieChartInstance = new Chart(ctx2d, {
-        type: 'doughnut',
-        data: {
-          labels: allLabels,
-          datasets: [{ data: allData, backgroundColor: [
-            '#FF3B30','#FF9500','#FFCC00','#FF6482','#FF375F','#FF2D55',
-            '#34C759','#30B0C7','#32ADE6','#007AFF','#5856D6','#AF52DE'
-          ]}]
-        },
-        options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
-      });
+    var monthTxs = filterByMonth(transactions, currentSummaryMonth);
+    var totalIncome = monthTxs.filter(function(t) { return t.type === 'income'; }).reduce(function(s,t) { return s + t.amount; }, 0);
+    var totalExpense = monthTxs.filter(function(t) { return t.type === 'expense'; }).reduce(function(s,t) { return s + t.amount; }, 0);
+
+    var summaryCards = document.getElementById('summaryCards');
+    if (summaryCards) {
+      summaryCards.innerHTML = 
+        '<div class="card income"><div class="label">总收入</div><div class="value">' + totalIncome.toFixed(2) + '</div></div>' +
+        '<div class="card expense"><div class="label">总支出</div><div class="value">' + totalExpense.toFixed(2) + '</div></div>' +
+        '<div class="card balance"><div class="label">结余</div><div class="value">' + (totalIncome - totalExpense).toFixed(2) + '</div></div>';
     }
 
-    const detailHTML = `
-      <h4 style="margin-top:20px;">支出明细</h4>
-      ${expenseEntries.length === 0 ? '<p style="color:#999">无支出</p>' : 
-        expenseEntries.map(([cat, amt]) => `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eee;"><span>${cat}</span><span style="color:#FF3B30;font-weight:600;">${amt.toFixed(2)}</span></div>`).join('')}
-      <h4 style="margin-top:20px;">收入明细</h4>
-      ${incomeEntries.length === 0 ? '<p style="color:#999">无收入</p>' :
-        incomeEntries.map(([cat, amt]) => `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eee;"><span>${cat}</span><span style="color:#34C759;font-weight:600;">${amt.toFixed(2)}</span></div>`).join('')}
-    `;
-    document.getElementById('detailList').innerHTML = detailHTML;
-  }
+    var expenseMap = {};
+    monthTxs.filter(function(t) { return t.type === 'expense'; }).forEach(function(t) {
+      expenseMap[t.category] = (expenseMap[t.category] || 0) + t.amount;
+    });
+    var expenseEntries = Object.entries(expenseMap).sort(function(a,b) { return b[1] - a[1]; });
+    
+    var incomeMap = {};
+    monthTxs.filter(function(t) { return t.type === 'income'; }).forEach(function(t) {
+      incomeMap[t.category] = (incomeMap[t.category] || 0) + t.amount;
+    });
+    var incomeEntries = Object.entries(incomeMap).sort(function(a,b) { return b[1] - a[1]; });
 
-  function changeSummaryMonth(delta) {
-    const [year, month] = currentSummaryMonth.split('-').map(Number);
-    const d = new Date(year, month-1+delta, 1);
-    currentSummaryMonth = d.toISOString().slice(0,7);
-    renderSummary();
-  }
-
-  // ============ 初始化 ============
-  async function init() {
-    loadLocalData();
-    await downloadFromGitHub();
-    renderQuickTags();
-    renderList();
-    // 如果本地有新数据，上传
-    if (transactions.length > 0) {
-      const lastSync = localStorage.getItem(SYNC_TIME_KEY);
-      if (!lastSync || Date.now() - parseInt(lastSync) > 60000) {
-        await uploadToGitHub();
+    var ctx = document.getElementById('pieChart');
+    if (ctx) {
+      if (pieChartInstance) pieChartInstance.destroy();
+      var ctx2d = ctx.getContext('2d');
+      var allLabels = expenseEntries.map(function(e) { return e[0] + '(支出)'; }).concat(incomeEntries.map(function(e) { return e[0] + '(收入)'; }));
+      var allData = expenseEntries.map(function(e) { return e[1]; }).concat(incomeEntries.map(function(e) { return e[1]; }));
+      
+      if (allLabels.length > 0) {
+        pieChartInstance = new Chart(ctx2d, {
+          type: 'doughnut',
+          data: {
+            labels: allLabels,
+            datasets: [{ data: allData, backgroundColor: [
+              '#FF3B30','#FF9500','#FFCC00','#FF6482','#FF375F','#FF2D55',
+              '#34C759','#30B0C7','#32ADE6','#007AFF','#5856D6','#AF52DE'
+            ]}]
+          },
+          options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+        });
       }
     }
+
+    var detailList = document.getElementById('detailList');
+    if (detailList) {
+      var html = '<h4 style="margin-top:20px;">支出明细</h4>';
+      if (expenseEntries.length === 0) {
+        html += '<p style="color:#999">无支出</p>';
+      } else {
+        expenseEntries.forEach(function(item) {
+          html += '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eee;"><span>' + item[0] + '</span><span style="color:#FF3B30;font-weight:600;">' + item[1].toFixed(2) + '</span></div>';
+        });
+      }
+      html += '<h4 style="margin-top:20px;">收入明细</h4>';
+      if (incomeEntries.length === 0) {
+        html += '<p style="color:#999">无收入</p>';
+      } else {
+        incomeEntries.forEach(function(item) {
+          html += '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eee;"><span>' + item[0] + '</span><span style="color:#34C759;font-weight:600;">' + item[1].toFixed(2) + '</span></div>';
+        });
+      }
+      detailList.innerHTML = html;
+    }
   }
 
-  init();
+  // ============ 事件绑定 ============
+  function bindAllEvents() {
+    document.querySelectorAll('.tab').forEach(function(tab) {
+      tab.addEventListener('click', function() { switchTab(this.dataset.page); });
+    });
+
+    document.getElementById('prevMonthBtn').addEventListener('click', function() { changeListMonth(-1); });
+    document.getElementById('nextMonthBtn').addEventListener('click', function() { changeListMonth(1); });
+    document.getElementById('summaryPrevBtn').addEventListener('click', function() { changeSummaryMonth(-1); });
+    document.getElementById('summaryNextBtn').addEventListener('click', function() { changeSummaryMonth(1); });
+    document.getElementById('saveBtn').addEventListener('click', saveTx);
+    document.getElementById('typeSelect').addEventListener('change', renderQuickTags);
+    document.getElementById('exportBtn').addEventListener('click', exportData);
+    document.getElementById('importBtn').addEventListener('click', importData);
+    document.getElementById('forceSyncBtn').addEventListener('click', forceSync);
+
+    document.querySelectorAll('.filter-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() { setFilter(this.dataset.filter); });
+    });
+
+    document.getElementById('dateInput').value = new Date().toISOString().slice(0,10);
+  }
+
+  // ============ 启动 ============
+  function init() {
+    loadLocalData();
+    bindAllEvents();
+    renderQuickTags();
+    renderList();
+    downloadFromGitHub(function(ok) {
+      if (ok) renderList();
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
 
   // Service Worker
   if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('sw.js').catch(() => {});
-    });
+    navigator.serviceWorker.register('sw.js').catch(function() {});
   }
 </script>
 </body>
